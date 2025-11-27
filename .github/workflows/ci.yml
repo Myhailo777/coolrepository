@@ -1,0 +1,75 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+  pull_request:
+    branches:
+      - main
+      - develop
+  workflow_dispatch:
+
+jobs:
+  test_and_build:
+    name: Test on Node ${{ matrix.node-version }}
+    runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:
+        node-version: [18.x, 20.x]
+
+    steps:
+      - name: Checkout Code 
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js ${{ matrix.node-version }} ⚙️
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'npm'
+
+      - name: Install Dependencies 
+        run: npm install
+
+      - name: Run Tests 
+        run: npm test
+      
+      - name: Build Project 
+        run: npm run build
+        
+      - name: Upload Build Artifact 
+        uses: actions/upload-artifact@v4
+        with:
+          name: deployment-package
+          path: build
+
+  deploy:
+    name: Deploy to Server
+    needs: test_and_build
+    if: github.ref == 'refs/heads/main'
+    
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Download Build Artifact 
+        uses: actions/download-artifact@v4
+        with:
+          name: deployment-package
+          path: ./
+
+      - name: Deploy via SSH 
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          key: ${{ secrets.SSH_KEY }}
+          script: |
+            echo "Deployment started..."
+            cd /var/www/my-app
+            # systemctl stop my-app-service
+            rm -rf ./*
+            cp -r build/. /var/www/my-app/
+            # systemctl start my-app-service
+            echo "Deployment finished."
